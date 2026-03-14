@@ -19,9 +19,21 @@
             position: absolute;
             z-index: 1;
         }
-        video {
-            display: none; 
+        
+        /* --- VISIBLE WEBCAM STYLES --- */
+        #video {
+            display: block; 
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 150px; /* Adjust size here */
+            border-radius: 12px;
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            z-index: 20; /* Keeps it on top of the presentation */
+            transform: scaleX(-1); /* Mirrors the video so it acts like a real mirror */
         }
+
         #loading {
             position: absolute;
             top: 50%;
@@ -60,6 +72,7 @@
         
         .slide-up { transform: translateY(-100vh); opacity: 0; }
         .slide-left { transform: translateX(-50vw); opacity: 0; }
+        .slide-right { transform: translateX(50vw); opacity: 0; }
         .slide-center { transform: translate(0, 0); opacity: 1; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -67,6 +80,7 @@
 </head>
 <body>
     <div id="loading">Loading AI & Magic Dust...</div>
+    
     <video id="video" autoplay playsinline></video>
     
     <canvas id="canvas"></canvas>
@@ -213,7 +227,6 @@
             const isFolded = (tipIdx, jointIdx) => Math.hypot(landmarks[tipIdx].x - wrist.x, landmarks[tipIdx].y - wrist.y) < Math.hypot(landmarks[jointIdx].x - wrist.x, landmarks[jointIdx].y - wrist.y);
             const isOpen = (tipIdx, jointIdx) => !isFolded(tipIdx, jointIdx);
             
-            // Peace Sign: Index and Middle fingers open, Ring and Pinky fingers folded
             return isOpen(8, 6) && isOpen(12, 10) && isFolded(16, 14) && isFolded(20, 18);
         }
 
@@ -232,11 +245,9 @@
                 let dx = currentPos.x - startPos.x;
                 let dy = currentPos.y - startPos.y;
 
-                // Determine if the movement is more horizontal or vertical
                 let isHorizontal = Math.abs(dx) > Math.abs(dy);
 
                 if (currentSlide === 1) {
-                    // SLIDE 1: STRICTLY UPWARD SWIPE (bottom to top)
                     if (!isHorizontal && dy < -0.15) { 
                         currentSlide = 2; 
                         showSlide(currentSlide, 'slide-up');
@@ -244,8 +255,6 @@
                         handHistory = [];
                     }
                 } else if (currentSlide >= 2 && currentSlide < totalSlides) {
-                    // SLIDE 2+: STRICTLY RIGHT-TO-LEFT SWIPE
-                    // dx < -0.15 means moving from Right to Left on screen
                     if (isHorizontal && dx < -0.15) { 
                         currentSlide++;
                         showSlide(currentSlide, 'slide-left');
@@ -274,7 +283,6 @@
                 handX = results.multiHandLandmarks[0][8].x * canvas.width;
                 handY = results.multiHandLandmarks[0][8].y * canvas.height;
 
-                // --- NEW TRIGGER: PEACE SIGN ---
                 if (!presentationMode) {
                     let peaceDetected = false;
                     for (let i = 0; i < results.multiHandLandmarks.length; i++) {
@@ -286,16 +294,15 @@
 
                     if (peaceDetected) {
                         triggerHoldTime++;
-                        // Must hold the Peace Sign for ~15 frames (half a second)
                         if (triggerHoldTime > 15) {
                             presentationMode = true;
                             presContainer.style.opacity = 1;
-                            gestureCooldown = now + 1000; // Pause 1 sec before reading swipes
+                            gestureCooldown = now + 1000; 
                             handHistory = [];
                             triggerHoldTime = 0;
                         }
                     } else {
-                        triggerHoldTime = 0; // Reset if the gesture breaks
+                        triggerHoldTime = 0; 
                     }
                 }
 
