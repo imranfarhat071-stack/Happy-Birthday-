@@ -33,7 +33,6 @@
             transition: opacity 0.5s;
         }
         
-        /* New Styles for the Interactive Presentation */
         #presentation-container {
             position: absolute;
             top: 0;
@@ -46,8 +45,8 @@
             align-items: center;
             justify-content: center;
             opacity: 0;
-            pointer-events: none; /* Let clicks pass through if needed */
-            transition: opacity 1s ease-in-out;
+            pointer-events: none; 
+            transition: opacity 0.5s ease-in-out;
         }
         #slide-image {
             max-width: 95%;
@@ -55,9 +54,10 @@
             object-fit: contain;
             border-radius: 10px;
             box-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
-            transition: transform 0.6s ease-out, opacity 0.6s ease-out;
+            /* SPED UP THE ANIMATIONS HERE (0.3s instead of 0.6s) */
+            transition: transform 0.3s ease-out, opacity 0.3s ease-out;
         }
-        /* Animation classes */
+        
         .slide-up { transform: translateY(-100vh); opacity: 0; }
         .slide-left { transform: translateX(-50vw); opacity: 0; }
         .slide-right { transform: translateX(50vw); opacity: 0; }
@@ -77,15 +77,23 @@
     </div>
 
     <script>
+        // --- PRELOAD IMAGES ---
+        // This forces the browser to download all 8 images in the background immediately
+        const preloadedImages = [];
+        const totalSlides = 8;
+        for (let i = 1; i <= totalSlides; i++) {
+            let img = new Image();
+            img.src = `slide${i}.jpg`;
+            preloadedImages.push(img);
+        }
+
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const videoElement = document.getElementById('video');
         const loadingText = document.getElementById('loading');
         
-        // Presentation Elements
         const presContainer = document.getElementById('presentation-container');
         const slideImage = document.getElementById('slide-image');
-
         const offCanvas = document.createElement('canvas');
         const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
 
@@ -101,22 +109,23 @@
         // --- Presentation State ---
         let presentationMode = false;
         let currentSlide = 1;
-        const totalSlides = 8;
-        let gestureCooldown = 0; // Prevents rapid double-swiping
-        let handHistory = []; // Tracks hand position over time to detect swipes
+        let gestureCooldown = 0; 
+        let handHistory = []; 
 
         function showSlide(slideNum, transitionClass) {
             // Apply out-transition
             slideImage.className = transitionClass; 
             
+            // Wait ONLY 300ms for the slide to move out of the way
             setTimeout(() => {
-                // Change image source
-                slideImage.src = `slide${slideNum}.jpg`;
-                // Wait for image to load, then animate in
-                slideImage.onload = () => {
+                // Change image instantly (it's already downloaded in memory!)
+                slideImage.src = preloadedImages[slideNum - 1].src;
+                
+                // Wait a tiny fraction of a second for the browser to render the new src, then slide it in
+                setTimeout(() => {
                     slideImage.className = 'slide-center';
-                };
-            }, 500); // 500ms matches the CSS transition time
+                }, 50); 
+            }, 300); 
         }
 
         // --- Particle System ---
@@ -130,7 +139,6 @@
                 this.targetX = this.originX;
                 this.targetY = this.originY;
                 this.color = 'rgba(255, 255, 255, 0.6)';
-                
                 this.vx = 0;
                 this.vy = 0;
                 this.size = Math.random() * 1.5 + 0.5;
@@ -143,12 +151,10 @@
                 if (currentShape === 'dust' && !presentationMode) {
                     let dx = this.x - handX;
                     let dy = this.y - handY;
-                    let distance = Math.sqrt(dx * dx + dy * dy);
-                    let interactionRadius = 100;
-                    if (distance < interactionRadius) {
-                        let force = (interactionRadius - distance) / interactionRadius;
-                        this.vx += (dx / distance) * force * 15;
-                        this.vy += (dy / distance) * force * 15;
+                    if (Math.sqrt(dx * dx + dy * dy) < 100) {
+                        let force = (100 - Math.sqrt(dx * dx + dy * dy)) / 100;
+                        this.vx += (dx / Math.sqrt(dx * dx + dy * dy)) * force * 15;
+                        this.vy += (dy / Math.sqrt(dx * dx + dy * dy)) * force * 15;
                     }
                 }
                 this.vx *= this.friction;
@@ -163,9 +169,7 @@
         }
 
         let particles = [];
-        for (let i = 0; i < 3000; i++) {
-            particles.push(new Particle());
-        }
+        for (let i = 0; i < 3000; i++) { particles.push(new Particle()); }
 
         function updateParticleTargets(shape) {
             if (shape === currentShape || presentationMode) return; 
@@ -177,30 +181,12 @@
             }
 
             offCtx.clearRect(0, 0, offCanvas.width, offCanvas.height);
-            let cx = offCanvas.width / 2;
-            let cy = offCanvas.height / 2;
+            let cx = offCanvas.width / 2; let cy = offCanvas.height / 2;
 
-            if (shape === 'square') {
-                offCtx.fillStyle = '#FFFFFF';
-                offCtx.fillRect(cx - 50, cy - 50, 100, 100);
-            } else if (shape === 'circle') {
-                offCtx.fillStyle = '#FFFFFF';
-                offCtx.beginPath();
-                offCtx.arc(cx, cy, 50, 0, Math.PI * 2);
-                offCtx.fill();
-            } else if (shape === 'text') {
-                offCtx.fillStyle = '#FFFFFF';
-                offCtx.textAlign = 'center'; offCtx.textBaseline = 'middle';
-                offCtx.font = 'bold ' + (offCanvas.width * 0.12) + 'px sans-serif';
-                offCtx.fillText('Happy Birthday', cx, cy - 28);
-                offCtx.fillText('Laxmi', cx, cy + 28);
-            } else if (shape === 'flag') {
-                let fw = 100; let fh = 60; let stripeH = fh / 3;
-                offCtx.fillStyle = '#FF9933'; offCtx.fillRect(cx - fw/2, cy - fh/2, fw, stripeH); 
-                offCtx.fillStyle = '#FFFFFF'; offCtx.fillRect(cx - fw/2, cy - fh/2 + stripeH, fw, stripeH); 
-                offCtx.fillStyle = '#138808'; offCtx.fillRect(cx - fw/2, cy - fh/2 + stripeH*2, fw, stripeH); 
-                offCtx.fillStyle = '#000080'; offCtx.beginPath(); offCtx.arc(cx, cy, stripeH * 0.4, 0, Math.PI * 2); offCtx.fill();
-            }
+            if (shape === 'square') { offCtx.fillStyle = '#FFFFFF'; offCtx.fillRect(cx - 50, cy - 50, 100, 100); } 
+            else if (shape === 'circle') { offCtx.fillStyle = '#FFFFFF'; offCtx.beginPath(); offCtx.arc(cx, cy, 50, 0, Math.PI * 2); offCtx.fill(); } 
+            else if (shape === 'text') { offCtx.fillStyle = '#FFFFFF'; offCtx.textAlign = 'center'; offCtx.textBaseline = 'middle'; offCtx.font = 'bold ' + (offCanvas.width * 0.12) + 'px sans-serif'; offCtx.fillText('Happy Birthday', cx, cy - 28); offCtx.fillText('Laxmi', cx, cy + 28); } 
+            else if (shape === 'flag') { let fw = 100; let fh = 60; let stripeH = fh / 3; offCtx.fillStyle = '#FF9933'; offCtx.fillRect(cx - fw/2, cy - fh/2, fw, stripeH); offCtx.fillStyle = '#FFFFFF'; offCtx.fillRect(cx - fw/2, cy - fh/2 + stripeH, fw, stripeH); offCtx.fillStyle = '#138808'; offCtx.fillRect(cx - fw/2, cy - fh/2 + stripeH*2, fw, stripeH); offCtx.fillStyle = '#000080'; offCtx.beginPath(); offCtx.arc(cx, cy, stripeH * 0.4, 0, Math.PI * 2); offCtx.fill(); }
 
             let imgData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height).data;
             let validPixels = [];
@@ -213,51 +199,39 @@
 
             if (validPixels.length > 0) {
                 validPixels.sort(() => Math.random() - 0.5); 
-                particles.forEach((p, index) => {
-                    let px = validPixels[index % validPixels.length];
-                    p.targetX = px.x; p.targetY = px.y; p.color = px.color;
-                });
+                particles.forEach((p, index) => { let px = validPixels[index % validPixels.length]; p.targetX = px.x; p.targetY = px.y; p.color = px.color; });
             }
         }
 
         // --- Gesture Math Logic ---
         function isHandClosed(landmarks) {
             const wrist = landmarks[0];
-            const isFolded = (tipIdx, jointIdx) => {
-                return Math.hypot(landmarks[tipIdx].x - wrist.x, landmarks[tipIdx].y - wrist.y) < Math.hypot(landmarks[jointIdx].x - wrist.x, landmarks[jointIdx].y - wrist.y);
-            };
+            const isFolded = (tipIdx, jointIdx) => Math.hypot(landmarks[tipIdx].x - wrist.x, landmarks[tipIdx].y - wrist.y) < Math.hypot(landmarks[jointIdx].x - wrist.x, landmarks[jointIdx].y - wrist.y);
             return isFolded(8,6) && isFolded(12,10) && isFolded(16,14) && isFolded(20,18);
         }
 
         function isSalute(landmarks) {
             if (isHandClosed(landmarks)) return false;
-            let dx = Math.abs(landmarks[12].x - landmarks[0].x);
-            let dy = Math.abs(landmarks[12].y - landmarks[0].y);
-            return dx > dy; 
+            return Math.abs(landmarks[12].x - landmarks[0].x) > Math.abs(landmarks[12].y - landmarks[0].y); 
         }
 
         // --- Swiping Engine ---
         function detectSwipe(landmarks) {
             let now = Date.now();
-            if (now - gestureCooldown < 1500) return; // Wait 1.5 seconds between swipes
+            // Reduced cooldown from 1500ms to 800ms so she can swipe faster
+            if (now - gestureCooldown < 800) return; 
 
-            let wrist = landmarks[0]; // Track the wrist for broad movements
+            let wrist = landmarks[0]; 
             handHistory.push({ x: wrist.x, y: wrist.y, time: now });
-            
-            // Remove data older than 400ms
             handHistory = handHistory.filter(h => now - h.time < 400);
 
             if (handHistory.length > 3) {
                 let startPos = handHistory[0];
                 let currentPos = handHistory[handHistory.length - 1];
-                
-                // Calculate movement delta
                 let dx = currentPos.x - startPos.x;
                 let dy = currentPos.y - startPos.y;
 
                 if (currentSlide === 1) {
-                    // Page 1: Waiting for BOTTOM TO TOP swipe to open envelope
-                    // Note: Y coordinates go from 0 (top) to 1 (bottom), so upward movement means dy is negative
                     if (dy < -0.2) { 
                         currentSlide++;
                         showSlide(currentSlide, 'slide-up');
@@ -265,10 +239,8 @@
                         handHistory = [];
                     }
                 } else if (currentSlide > 1 && currentSlide < totalSlides) {
-                    // Pages 2+: Waiting for sideways swipe
                     if (Math.abs(dx) > 0.25) { 
                         currentSlide++;
-                        // Mirror mode makes left/right tricky, so ANY large horizontal swipe turns the page forward
                         showSlide(currentSlide, dx > 0 ? 'slide-left' : 'slide-right');
                         gestureCooldown = now;
                         handHistory = [];
@@ -281,13 +253,7 @@
         let handY = -1000;
 
         const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-        hands.setOptions({
-            maxNumHands: 2, 
-            modelComplexity: 1,
-            minDetectionConfidence: 0.6,
-            minTrackingConfidence: 0.6,
-            selfieMode: true 
-        });
+        hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.6, selfieMode: true });
 
         hands.onResults((results) => {
             loadingText.style.opacity = 0;
@@ -301,32 +267,21 @@
                 handX = results.multiHandLandmarks[0][8].x * canvas.width;
                 handY = results.multiHandLandmarks[0][8].y * canvas.height;
 
-                // 1. Detect Namaste to Start Presentation
                 if (!presentationMode && results.multiHandLandmarks.length === 2) {
-                    let wrist1 = results.multiHandLandmarks[0][0];
-                    let wrist2 = results.multiHandLandmarks[1][0];
-                    let distanceBetweenWrists = Math.hypot(wrist1.x - wrist2.x, wrist1.y - wrist2.y);
-                    
-                    // If wrists are very close together (Namaste)
-                    if (distanceBetweenWrists < 0.15) {
+                    if (Math.hypot(results.multiHandLandmarks[0][0].x - results.multiHandLandmarks[1][0].x, results.multiHandLandmarks[0][0].y - results.multiHandLandmarks[1][0].y) < 0.15) {
                         presentationMode = true;
                         presContainer.style.opacity = 1;
-                        gestureCooldown = now; // Give them a moment before detecting swipes
+                        gestureCooldown = now; 
                     }
                 }
 
-                // 2. Process Swipes if in Presentation Mode
-                if (presentationMode) {
-                    detectSwipe(results.multiHandLandmarks[0]);
-                }
+                if (presentationMode) detectSwipe(results.multiHandLandmarks[0]);
 
-                // 3. Process regular gestures if NOT in Presentation Mode
                 if (!presentationMode) {
                     for (let i = 0; i < results.multiHandLandmarks.length; i++) {
                         let landmarks = results.multiHandLandmarks[i];
-                        let isRightHand = landmarks[0].x > 0.5; 
                         let closed = isHandClosed(landmarks);
-                        if (isRightHand) {
+                        if (landmarks[0].x > 0.5) {
                             if (closed) rightClosed = true;
                             if (!closed && isSalute(landmarks)) saluting = true;
                         } else {
@@ -337,7 +292,7 @@
                 }
             } else {
                 handX = -1000; handY = -1000;
-                handHistory = []; // Clear swipe history if hand is lost
+                handHistory = []; 
             }
 
             if (!presentationMode) {
@@ -349,16 +304,10 @@
                 updateParticleTargets(newShape);
             }
 
-            for (let i = 0; i < particles.length; i++) {
-                particles[i].update(handX, handY);
-                particles[i].draw();
-            }
+            for (let i = 0; i < particles.length; i++) { particles[i].update(handX, handY); particles[i].draw(); }
         });
 
-        const camera = new Camera(videoElement, {
-            onFrame: async () => await hands.send({image: videoElement}),
-            width: window.innerWidth, height: window.innerHeight, facingMode: 'user'
-        });
+        const camera = new Camera(videoElement, { onFrame: async () => await hands.send({image: videoElement}), width: window.innerWidth, height: window.innerHeight, facingMode: 'user' });
         camera.start();
     </script>
 </body>
