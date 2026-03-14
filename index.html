@@ -144,7 +144,6 @@
                 offCtx.textAlign = 'center';
                 offCtx.textBaseline = 'middle';
                 offCtx.font = 'bold ' + (offCanvas.width * 0.12) + 'px sans-serif';
-                // Increased spacing here (from 15 to 28)
                 offCtx.fillText('Happy Birthday', cx, cy - 28);
                 offCtx.fillText('Laxmi', cx, cy + 28);
             } 
@@ -201,15 +200,9 @@
         }
 
         function isSalute(landmarks) {
-            // Must be an open hand
             if (isHandClosed(landmarks)) return false;
-            
-            // A much more forgiving check: Is the hand generally pointing sideways?
-            // We compare the horizontal distance to the vertical distance from wrist to middle finger.
             let dx = Math.abs(landmarks[12].x - landmarks[0].x);
             let dy = Math.abs(landmarks[12].y - landmarks[0].y);
-            
-            // If the horizontal span is greater than the vertical span, it's a salute
             return dx > dy; 
         }
 
@@ -249,10 +242,11 @@
 
                     if (isRightHand) {
                         if (closed) rightClosed = true;
-                        // Checking for salute only on the right hand
                         if (!closed && isSalute(landmarks)) saluting = true;
                     } else {
                         if (closed) leftClosed = true;
+                        // ADDED: Check for salute on the left hand too!
+                        if (!closed && isSalute(landmarks)) saluting = true; 
                     }
                 }
             } else {
