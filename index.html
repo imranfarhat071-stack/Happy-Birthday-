@@ -16,7 +16,6 @@
             width: 100vw;
             height: 100vh;
         }
-        /* Hide the video element as we only need it to feed the camera to the AI */
         video {
             display: none; 
         }
@@ -35,7 +34,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
-    <div id="loading">Requesting camera access & loading AI...</div>
+    <div id="loading">Loading AI & Magic Dust...</div>
     <video id="video" autoplay playsinline></video>
     <canvas id="canvas"></canvas>
 
@@ -45,10 +44,16 @@
         const videoElement = document.getElementById('video');
         const loadingText = document.getElementById('loading');
 
-        // Set canvas to full screen
+        // Hidden canvas used to perfectly calculate shapes, text, and flags
+        const offCanvas = document.createElement('canvas');
+        const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
+
         function resize() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+            // Offscreen canvas is scaled down by 4 for extreme performance
+            offCanvas.width = Math.floor(canvas.width / 4);
+            offCanvas.height = Math.floor(canvas.height / 4);
         }
         window.addEventListener('resize', resize);
         resize();
@@ -60,104 +65,235 @@
                 this.originY = Math.random() * canvas.height;
                 this.x = this.originX;
                 this.y = this.originY;
+                // Target is where they want to go based on the current shape
+                this.targetX = this.originX;
+                this.targetY = this.originY;
+                this.color = 'rgba(255, 255, 255, 0.6)';
+                
                 this.vx = 0;
                 this.vy = 0;
-                this.size = Math.random() * 2 + 0.5; // Non-uniform small sizes
-                this.friction = 0.85; // How fast they slow down
-                this.spring = 0.05; // Elasticity to return to original position
+                this.size = Math.random() * 1.5 + 0.5;
+                this.friction = 0.85; 
+                this.spring = 0.05 + (Math.random() * 0.05); // slightly varied elastic feeling
             }
 
-            update(targetX, targetY) {
-                let dx = this.x - targetX;
-                let dy = this.y - targetY;
+            update(handX, handY) {
+                let dx = this.x - handX;
+                let dy = this.y - handY;
                 let distance = Math.sqrt(dx * dx + dy * dy);
 
-                // If hand is close, push particles away
-                let interactionRadius = 120;
+                // Hand pushing particles away
+                let interactionRadius = 100;
                 if (distance < interactionRadius) {
                     let force = (interactionRadius - distance) / interactionRadius;
-                    this.vx += (dx / distance) * force * 10;
-                    this.vy += (dy / distance) * force * 10;
+                    this.vx += (dx / distance) * force * 15;
+                    this.vy += (dy / distance) * force * 15;
                 }
 
-                // Elastic spring force pulling back to origin
-                this.vx += (this.originX - this.x) * this.spring;
-                this.vy += (this.originY - this.y) * this.spring;
+                // Spring back to their current target (dust, shape, or text)
+                this.vx += (this.targetX - this.x) * this.spring;
+                this.vy += (this.targetY - this.y) * this.spring;
 
-                // Apply friction
                 this.vx *= this.friction;
                 this.vy *= this.friction;
-
-                // Update position
                 this.x += this.vx;
                 this.y += this.vy;
             }
 
             draw() {
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.fillStyle = this.color;
+                // fillRect is much faster than drawing circles, allowing for 3000+ particles
+                ctx.fillRect(this.x, this.y, this.size, this.size);
             }
         }
 
-        // Generate dust particles
         let particles = [];
-        for (let i = 0; i < 600; i++) {
+        for (let i = 0; i < 3000; i++) {
             particles.push(new Particle());
+        }
+
+        // --- Shape Generation Logic ---
+        let currentShape = 'dust';
+
+        function updateParticleTargets(shape) {
+            if (shape === currentShape) return; // Don't recalculate if state hasn't changed
+            currentShape = shape;
+
+            if (shape === 'dust') {
+                particles.forEach(p => {
+                    p.targetX = p.originX;
+                    p.targetY = p.originY;
+                    p.color = 'rgba(255, 255, 255, 0.6)';
+                });
+                return;
+            }
+
+            // Draw chosen shape on the hidden canvas
+            offCtx.clearRect(0, 0, offCanvas.width, offCanvas.height);
+            let cx = offCanvas.width / 2;
+            let cy = offCanvas.height / 2;
+
+            if (shape === 'square') {
+                offCtx.fillStyle = '#FFFFFF';
+                let size = Math.min(offCanvas.width, offCanvas.height) * 0.5;
+                offCtx.fillRect(cx - size/2, cy - size/2, size, size);
+            } 
+            else if (shape === 'circle') {
+                offCtx.fillStyle = '#FFFFFF';
+                offCtx.beginPath();
+                offCtx.arc(cx, cy, Math.min(offCanvas.width, offCanvas.height) * 0.3, 0, Math.PI * 2);
+                offCtx.fill();
+            } 
+            else if (shape === 'text') {
+                offCtx.fillStyle = '#FFFFFF';
+                offCtx.textAlign = 'center';
+                offCtx.textBaseline = 'middle';
+                offCtx.font = 'bold ' + (offCanvas.width * 0.12) + 'px sans-serif';
+                offCtx.fillText('Happy Birthday', cx, cy - 15);
+                offCtx.fillText('Laxmi', cx, cy + 15);
+            } 
+            else if (shape === 'flag') {
+                let fw = offCanvas.width * 0.7;
+                let fh = offCanvas.height * 0.45;
+                let fx = cx - fw/2;
+                let fy = cy - fh/2;
+                let stripeH = fh / 3;
+                offCtx.fillStyle = '#FF9933'; offCtx.fillRect(fx, fy, fw, stripeH); // Saffron
+                offCtx.fillStyle = '#FFFFFF'; offCtx.fillRect(fx, fy + stripeH, fw, stripeH); // White
+                offCtx.fillStyle = '#138808'; offCtx.fillRect(fx, fy + stripeH*2, fw, stripeH); // Green
+                
+                // Blue Chakra
+                offCtx.fillStyle = '#000080';
+                offCtx.beginPath();
+                offCtx.arc(cx, cy, stripeH * 0.4, 0, Math.PI * 2);
+                offCtx.fill();
+            }
+
+            // Extract the pixels and map them back to the main canvas
+            let imgData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height).data;
+            let validPixels = [];
+            for (let i = 0; i < imgData.length; i += 4) {
+                if (imgData[i+3] > 100) { // If pixel is not transparent
+                    let pixelIndex = i / 4;
+                    // Multiply by 4 because the hidden canvas is 1/4th the size
+                    let x = (pixelIndex % offCanvas.width) * 4; 
+                    let y = Math.floor(pixelIndex / offCanvas.width) * 4;
+                    let r = imgData[i];
+                    let g = imgData[i+1];
+                    let b = imgData[i+2];
+                    validPixels.push({x, y, color: `rgba(${r}, ${g}, ${b}, 0.9)`});
+                }
+            }
+
+            // Assign the found pixel coordinates to the particles
+            if (validPixels.length > 0) {
+                validPixels.sort(() => Math.random() - 0.5); // Shuffle for organic look
+                particles.forEach((p, index) => {
+                    let px = validPixels[index % validPixels.length];
+                    p.targetX = px.x;
+                    p.targetY = px.y;
+                    p.color = px.color;
+                });
+            }
+        }
+
+        // --- Gesture Math Logic ---
+        function isHandClosed(landmarks) {
+            const wrist = landmarks[0];
+            // Checks if a fingertip is closer to the wrist than the middle joint (meaning it's folded)
+            const isFolded = (tipIdx, jointIdx) => {
+                const distTip = Math.hypot(landmarks[tipIdx].x - wrist.x, landmarks[tipIdx].y - wrist.y);
+                const distJoint = Math.hypot(landmarks[jointIdx].x - wrist.x, landmarks[jointIdx].y - wrist.y);
+                return distTip < distJoint;
+            };
+            return isFolded(8,6) && isFolded(12,10) && isFolded(16,14) && isFolded(20,18);
+        }
+
+        function isSalute(landmarks) {
+            if (isHandClosed(landmarks)) return false;
+            // A salute usually has the hand horizontally across the face/head. 
+            // We check if the distance horizontally is greater than vertically.
+            let dx = Math.abs(landmarks[12].x - landmarks[0].x);
+            let dy = Math.abs(landmarks[12].y - landmarks[0].y);
+            return dx > dy * 0.8; 
         }
 
         let handX = -1000;
         let handY = -1000;
 
-        // --- Hand Tracking System ---
         const hands = new Hands({locateFile: (file) => {
             return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
         }});
 
         hands.setOptions({
-            maxNumHands: 1,
+            maxNumHands: 2, // Upgraded to track 2 hands
             modelComplexity: 1,
             minDetectionConfidence: 0.6,
             minTrackingConfidence: 0.6,
-            selfieMode: true // Mirrors the tracking so it feels natural
+            selfieMode: true 
         });
 
         hands.onResults((results) => {
-            // Hide loading text once tracking starts
             loadingText.style.opacity = 0;
-
-            // Clear the screen with a slight trail effect (alpha 0.3) or fully (alpha 1)
             ctx.fillStyle = 'rgba(0, 0, 0, 1)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Get hand coordinates (using the index finger tip: landmark 8)
+            let leftClosed = false;
+            let rightClosed = false;
+            let saluting = false;
+
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                // Keep track of one hand to push particles around
                 const indexFinger = results.multiHandLandmarks[0][8];
-                // Convert normalized coordinates (0 to 1) to canvas pixels
                 handX = indexFinger.x * canvas.width;
                 handY = indexFinger.y * canvas.height;
+
+                for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                    let landmarks = results.multiHandLandmarks[i];
+                    // Since it's selfie mode, an X coordinate > 0.5 means it's your physical Right hand
+                    let isRightHand = landmarks[0].x > 0.5; 
+                    let closed = isHandClosed(landmarks);
+
+                    if (isRightHand) {
+                        if (closed) rightClosed = true;
+                        if (!closed && isSalute(landmarks)) saluting = true;
+                    } else {
+                        if (closed) leftClosed = true;
+                    }
+                }
             } else {
-                // Move target off-screen if no hand is detected
                 handX = -1000;
                 handY = -1000;
             }
 
-            // Update and draw all particles
+            // Decide which shape to show based on the gestures detected
+            let newShape = 'dust';
+            if (leftClosed && rightClosed) {
+                newShape = 'text';
+            } else if (saluting) {
+                newShape = 'flag';
+            } else if (rightClosed) {
+                newShape = 'square';
+            } else if (leftClosed) {
+                newShape = 'circle';
+            }
+
+            updateParticleTargets(newShape);
+
+            // Animate particles
             for (let i = 0; i < particles.length; i++) {
                 particles[i].update(handX, handY);
                 particles[i].draw();
             }
         });
 
-        // Start the camera
         const camera = new Camera(videoElement, {
             onFrame: async () => {
                 await hands.send({image: videoElement});
             },
             width: window.innerWidth,
             height: window.innerHeight,
-            facingMode: 'user' // Forces the front-facing (selfie) camera
+            facingMode: 'user'
         });
         camera.start();
     </script>
