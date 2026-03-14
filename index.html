@@ -48,13 +48,14 @@
             pointer-events: none; 
             transition: opacity 0.5s ease-in-out;
         }
+        
         #slide-image {
-            max-width: 95%;
-            max-height: 95%;
-            object-fit: contain;
-            border-radius: 10px;
-            box-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
-            /* SPED UP THE ANIMATIONS HERE (0.3s instead of 0.6s) */
+            /* FIXED DISTORTION: Enforces screen boundaries while keeping the exact aspect ratio */
+            width: 100%;
+            height: 100%;
+            object-fit: contain; 
+            padding: 20px;
+            box-sizing: border-box;
             transition: transform 0.3s ease-out, opacity 0.3s ease-out;
         }
         
@@ -77,14 +78,11 @@
     </div>
 
     <script>
-        // --- PRELOAD IMAGES ---
-        // This forces the browser to download all 8 images in the background immediately
-        const preloadedImages = [];
+        // Preload images silently
         const totalSlides = 8;
         for (let i = 1; i <= totalSlides; i++) {
             let img = new Image();
             img.src = `slide${i}.jpg`;
-            preloadedImages.push(img);
         }
 
         const canvas = document.getElementById('canvas');
@@ -106,22 +104,16 @@
         window.addEventListener('resize', resize);
         resize();
 
-        // --- Presentation State ---
         let presentationMode = false;
         let currentSlide = 1;
         let gestureCooldown = 0; 
         let handHistory = []; 
 
         function showSlide(slideNum, transitionClass) {
-            // Apply out-transition
             slideImage.className = transitionClass; 
-            
-            // Wait ONLY 300ms for the slide to move out of the way
             setTimeout(() => {
-                // Change image instantly (it's already downloaded in memory!)
-                slideImage.src = preloadedImages[slideNum - 1].src;
-                
-                // Wait a tiny fraction of a second for the browser to render the new src, then slide it in
+                // Safely assign the next slide
+                slideImage.src = `slide${slideNum}.jpg`;
                 setTimeout(() => {
                     slideImage.className = 'slide-center';
                 }, 50); 
@@ -151,10 +143,11 @@
                 if (currentShape === 'dust' && !presentationMode) {
                     let dx = this.x - handX;
                     let dy = this.y - handY;
-                    if (Math.sqrt(dx * dx + dy * dy) < 100) {
-                        let force = (100 - Math.sqrt(dx * dx + dy * dy)) / 100;
-                        this.vx += (dx / Math.sqrt(dx * dx + dy * dy)) * force * 15;
-                        this.vy += (dy / Math.sqrt(dx * dx + dy * dy)) * force * 15;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 100) {
+                        let force = (100 - dist) / 100;
+                        this.vx += (dx / dist) * force * 15;
+                        this.vy += (dy / dist) * force * 15;
                     }
                 }
                 this.vx *= this.friction;
@@ -218,7 +211,6 @@
         // --- Swiping Engine ---
         function detectSwipe(landmarks) {
             let now = Date.now();
-            // Reduced cooldown from 1500ms to 800ms so she can swipe faster
             if (now - gestureCooldown < 800) return; 
 
             let wrist = landmarks[0]; 
@@ -232,16 +224,25 @@
                 let dy = currentPos.y - startPos.y;
 
                 if (currentSlide === 1) {
-                    if (dy < -0.2) { 
+                    // Upward swipe to open envelope
+                    if (dy < -0.15) { 
                         currentSlide++;
                         showSlide(currentSlide, 'slide-up');
                         gestureCooldown = now;
                         handHistory = [];
                     }
-                } else if (currentSlide > 1 && currentSlide < totalSlides) {
-                    if (Math.abs(dx) > 0.25) { 
+                } else if (currentSlide > 1) {
+                    // FIXED: Left and Right swiping
+                    if (dx < -0.2 && currentSlide < totalSlides) { 
+                        // Swipe Left -> Next Slide
                         currentSlide++;
-                        showSlide(currentSlide, dx > 0 ? 'slide-left' : 'slide-right');
+                        showSlide(currentSlide, 'slide-left');
+                        gestureCooldown = now;
+                        handHistory = [];
+                    } else if (dx > 0.2 && currentSlide > 2) {
+                        // Swipe Right -> Previous Slide (stops at slide 2)
+                        currentSlide--;
+                        showSlide(currentSlide, 'slide-right');
                         gestureCooldown = now;
                         handHistory = [];
                     }
@@ -267,15 +268,23 @@
                 handX = results.multiHandLandmarks[0][8].x * canvas.width;
                 handY = results.multiHandLandmarks[0][8].y * canvas.height;
 
+                // STRICT NAMASTE DETECTION
                 if (!presentationMode && results.multiHandLandmarks.length === 2) {
-                    if (Math.hypot(results.multiHandLandmarks[0][0].x - results.multiHandLandmarks[1][0].x, results.multiHandLandmarks[0][0].y - results.multiHandLandmarks[1][0].y) < 0.15) {
+                    let wristDist = Math.hypot(results.multiHandLandmarks[0][0].x - results.multiHandLandmarks[1][0].x, results.multiHandLandmarks[0][0].y - results.multiHandLandmarks[1][0].y);
+                    let indexDist = Math.hypot(results.multiHandLandmarks[0][8].x - results.multiHandLandmarks[1][8].x, results.multiHandLandmarks[0][8].y - results.multiHandLandmarks[1][8].y);
+                    
+                    // Both wrists AND index fingers must be close to trigger
+                    if (wristDist < 0.1 && indexDist < 0.1) {
                         presentationMode = true;
                         presContainer.style.opacity = 1;
-                        gestureCooldown = now; 
+                        gestureCooldown = now + 1000; // Pause for a second before allowing swipes
+                        handHistory = [];
                     }
                 }
 
-                if (presentationMode) detectSwipe(results.multiHandLandmarks[0]);
+                if (presentationMode) {
+                    detectSwipe(results.multiHandLandmarks[0]);
+                }
 
                 if (!presentationMode) {
                     for (let i = 0; i < results.multiHandLandmarks.length; i++) {
