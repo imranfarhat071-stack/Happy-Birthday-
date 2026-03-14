@@ -44,19 +44,19 @@
         const videoElement = document.getElementById('video');
         const loadingText = document.getElementById('loading');
 
-        // Hidden canvas used to perfectly calculate shapes, text, and flags
         const offCanvas = document.createElement('canvas');
         const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
 
         function resize() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            // Offscreen canvas is scaled down by 4 for extreme performance
             offCanvas.width = Math.floor(canvas.width / 4);
             offCanvas.height = Math.floor(canvas.height / 4);
         }
         window.addEventListener('resize', resize);
         resize();
+
+        let currentShape = 'dust';
 
         // --- Particle System ---
         class Particle {
@@ -65,7 +65,6 @@
                 this.originY = Math.random() * canvas.height;
                 this.x = this.originX;
                 this.y = this.originY;
-                // Target is where they want to go based on the current shape
                 this.targetX = this.originX;
                 this.targetY = this.originY;
                 this.color = 'rgba(255, 255, 255, 0.6)';
@@ -74,26 +73,30 @@
                 this.vy = 0;
                 this.size = Math.random() * 1.5 + 0.5;
                 this.friction = 0.85; 
-                this.spring = 0.05 + (Math.random() * 0.05); // slightly varied elastic feeling
+                this.spring = 0.05 + (Math.random() * 0.05); 
             }
 
             update(handX, handY) {
-                let dx = this.x - handX;
-                let dy = this.y - handY;
-                let distance = Math.sqrt(dx * dx + dy * dy);
-
-                // Hand pushing particles away
-                let interactionRadius = 100;
-                if (distance < interactionRadius) {
-                    let force = (interactionRadius - distance) / interactionRadius;
-                    this.vx += (dx / distance) * force * 15;
-                    this.vy += (dy / distance) * force * 15;
-                }
-
                 // Spring back to their current target (dust, shape, or text)
                 this.vx += (this.targetX - this.x) * this.spring;
                 this.vy += (this.targetY - this.y) * this.spring;
 
+                // ONLY push particles away if they are just floating dust
+                if (currentShape === 'dust') {
+                    let dx = this.x - handX;
+                    let dy = this.y - handY;
+                    let distance = Math.sqrt(dx * dx + dy * dy);
+
+                    let interactionRadius = 100;
+                    if (distance < interactionRadius) {
+                        let force = (interactionRadius - distance) / interactionRadius;
+                        // Push them away
+                        this.vx += (dx / distance) * force * 15;
+                        this.vy += (dy / distance) * force * 15;
+                    }
+                }
+
+                // Apply friction and update position
                 this.vx *= this.friction;
                 this.vy *= this.friction;
                 this.x += this.vx;
@@ -102,7 +105,6 @@
 
             draw() {
                 ctx.fillStyle = this.color;
-                // fillRect is much faster than drawing circles, allowing for 3000+ particles
                 ctx.fillRect(this.x, this.y, this.size, this.size);
             }
         }
@@ -113,10 +115,8 @@
         }
 
         // --- Shape Generation Logic ---
-        let currentShape = 'dust';
-
         function updateParticleTargets(shape) {
-            if (shape === currentShape) return; // Don't recalculate if state hasn't changed
+            if (shape === currentShape) return; 
             currentShape = shape;
 
             if (shape === 'dust') {
@@ -128,7 +128,6 @@
                 return;
             }
 
-            // Draw chosen shape on the hidden canvas
             offCtx.clearRect(0, 0, offCanvas.width, offCanvas.height);
             let cx = offCanvas.width / 2;
             let cy = offCanvas.height / 2;
@@ -158,24 +157,21 @@
                 let fx = cx - fw/2;
                 let fy = cy - fh/2;
                 let stripeH = fh / 3;
-                offCtx.fillStyle = '#FF9933'; offCtx.fillRect(fx, fy, fw, stripeH); // Saffron
-                offCtx.fillStyle = '#FFFFFF'; offCtx.fillRect(fx, fy + stripeH, fw, stripeH); // White
-                offCtx.fillStyle = '#138808'; offCtx.fillRect(fx, fy + stripeH*2, fw, stripeH); // Green
+                offCtx.fillStyle = '#FF9933'; offCtx.fillRect(fx, fy, fw, stripeH); 
+                offCtx.fillStyle = '#FFFFFF'; offCtx.fillRect(fx, fy + stripeH, fw, stripeH); 
+                offCtx.fillStyle = '#138808'; offCtx.fillRect(fx, fy + stripeH*2, fw, stripeH); 
                 
-                // Blue Chakra
                 offCtx.fillStyle = '#000080';
                 offCtx.beginPath();
                 offCtx.arc(cx, cy, stripeH * 0.4, 0, Math.PI * 2);
                 offCtx.fill();
             }
 
-            // Extract the pixels and map them back to the main canvas
             let imgData = offCtx.getImageData(0, 0, offCanvas.width, offCanvas.height).data;
             let validPixels = [];
             for (let i = 0; i < imgData.length; i += 4) {
-                if (imgData[i+3] > 100) { // If pixel is not transparent
+                if (imgData[i+3] > 100) { 
                     let pixelIndex = i / 4;
-                    // Multiply by 4 because the hidden canvas is 1/4th the size
                     let x = (pixelIndex % offCanvas.width) * 4; 
                     let y = Math.floor(pixelIndex / offCanvas.width) * 4;
                     let r = imgData[i];
@@ -185,9 +181,8 @@
                 }
             }
 
-            // Assign the found pixel coordinates to the particles
             if (validPixels.length > 0) {
-                validPixels.sort(() => Math.random() - 0.5); // Shuffle for organic look
+                validPixels.sort(() => Math.random() - 0.5); 
                 particles.forEach((p, index) => {
                     let px = validPixels[index % validPixels.length];
                     p.targetX = px.x;
@@ -200,7 +195,6 @@
         // --- Gesture Math Logic ---
         function isHandClosed(landmarks) {
             const wrist = landmarks[0];
-            // Checks if a fingertip is closer to the wrist than the middle joint (meaning it's folded)
             const isFolded = (tipIdx, jointIdx) => {
                 const distTip = Math.hypot(landmarks[tipIdx].x - wrist.x, landmarks[tipIdx].y - wrist.y);
                 const distJoint = Math.hypot(landmarks[jointIdx].x - wrist.x, landmarks[jointIdx].y - wrist.y);
@@ -211,8 +205,6 @@
 
         function isSalute(landmarks) {
             if (isHandClosed(landmarks)) return false;
-            // A salute usually has the hand horizontally across the face/head. 
-            // We check if the distance horizontally is greater than vertically.
             let dx = Math.abs(landmarks[12].x - landmarks[0].x);
             let dy = Math.abs(landmarks[12].y - landmarks[0].y);
             return dx > dy * 0.8; 
@@ -226,7 +218,7 @@
         }});
 
         hands.setOptions({
-            maxNumHands: 2, // Upgraded to track 2 hands
+            maxNumHands: 2, 
             modelComplexity: 1,
             minDetectionConfidence: 0.6,
             minTrackingConfidence: 0.6,
@@ -243,14 +235,12 @@
             let saluting = false;
 
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                // Keep track of one hand to push particles around
                 const indexFinger = results.multiHandLandmarks[0][8];
                 handX = indexFinger.x * canvas.width;
                 handY = indexFinger.y * canvas.height;
 
                 for (let i = 0; i < results.multiHandLandmarks.length; i++) {
                     let landmarks = results.multiHandLandmarks[i];
-                    // Since it's selfie mode, an X coordinate > 0.5 means it's your physical Right hand
                     let isRightHand = landmarks[0].x > 0.5; 
                     let closed = isHandClosed(landmarks);
 
@@ -266,7 +256,6 @@
                 handY = -1000;
             }
 
-            // Decide which shape to show based on the gestures detected
             let newShape = 'dust';
             if (leftClosed && rightClosed) {
                 newShape = 'text';
@@ -280,7 +269,6 @@
 
             updateParticleTargets(newShape);
 
-            // Animate particles
             for (let i = 0; i < particles.length; i++) {
                 particles[i].update(handX, handY);
                 particles[i].draw();
