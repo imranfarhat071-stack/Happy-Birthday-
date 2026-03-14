@@ -60,7 +60,6 @@
         
         .slide-up { transform: translateY(-100vh); opacity: 0; }
         .slide-left { transform: translateX(-50vw); opacity: 0; }
-        .slide-right { transform: translateX(50vw); opacity: 0; }
         .slide-center { transform: translate(0, 0); opacity: 1; }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -109,12 +108,11 @@
         let currentSlide = 1;
         let gestureCooldown = 0; 
         let handHistory = []; 
-        let namasteHoldTime = 0; // Added to track how long Namaste is held
+        let triggerHoldTime = 0; 
 
         function showSlide(slideNum, transitionClass) {
             slideImage.className = transitionClass; 
             setTimeout(() => {
-                // Use preloaded images directly to completely avoid missing-file errors
                 slideImage.src = preloadedImages[slideNum - 1].src;
                 setTimeout(() => {
                     slideImage.className = 'slide-center';
@@ -210,12 +208,20 @@
             return Math.abs(landmarks[12].x - landmarks[0].x) > Math.abs(landmarks[12].y - landmarks[0].y); 
         }
 
-        // --- Improved Swiping Engine ---
+        function isPeaceSign(landmarks) {
+            const wrist = landmarks[0];
+            const isFolded = (tipIdx, jointIdx) => Math.hypot(landmarks[tipIdx].x - wrist.x, landmarks[tipIdx].y - wrist.y) < Math.hypot(landmarks[jointIdx].x - wrist.x, landmarks[jointIdx].y - wrist.y);
+            const isOpen = (tipIdx, jointIdx) => !isFolded(tipIdx, jointIdx);
+            
+            // Peace Sign: Index and Middle fingers open, Ring and Pinky fingers folded
+            return isOpen(8, 6) && isOpen(12, 10) && isFolded(16, 14) && isFolded(20, 18);
+        }
+
+        // --- Strictly Isolated Swiping Engine ---
         function detectSwipe(landmarks) {
             let now = Date.now();
-            if (now - gestureCooldown < 1000) return; // Wait 1 second between page turns so it doesn't double-skip
+            if (now - gestureCooldown < 1000) return; 
 
-            // TRACK INDEX FINGER INSTEAD OF WRIST (Moves much further during a swipe)
             let finger = landmarks[8]; 
             handHistory.push({ x: finger.x, y: finger.y, time: now });
             handHistory = handHistory.filter(h => now - h.time < 400);
@@ -226,26 +232,23 @@
                 let dx = currentPos.x - startPos.x;
                 let dy = currentPos.y - startPos.y;
 
+                // Determine if the movement is more horizontal or vertical
+                let isHorizontal = Math.abs(dx) > Math.abs(dy);
+
                 if (currentSlide === 1) {
-                    // Upward swipe to open envelope (Threshold lowered to 0.15)
-                    if (dy < -0.15) { 
-                        currentSlide = 2; // Hard-coded to 2 to prevent sync issues
+                    // SLIDE 1: STRICTLY UPWARD SWIPE (bottom to top)
+                    if (!isHorizontal && dy < -0.15) { 
+                        currentSlide = 2; 
                         showSlide(currentSlide, 'slide-up');
                         gestureCooldown = now;
                         handHistory = [];
                     }
-                } else if (currentSlide > 1) {
-                    // Left and Right swiping (Threshold lowered to 0.15 for easier turning)
-                    if (dx < -0.15 && currentSlide < totalSlides) { 
-                        // Swipe Left -> Next Slide
+                } else if (currentSlide >= 2 && currentSlide < totalSlides) {
+                    // SLIDE 2+: STRICTLY RIGHT-TO-LEFT SWIPE
+                    // dx < -0.15 means moving from Right to Left on screen
+                    if (isHorizontal && dx < -0.15) { 
                         currentSlide++;
                         showSlide(currentSlide, 'slide-left');
-                        gestureCooldown = now;
-                        handHistory = [];
-                    } else if (dx > 0.15 && currentSlide > 2) {
-                        // Swipe Right -> Previous Slide
-                        currentSlide--;
-                        showSlide(currentSlide, 'slide-right');
                         gestureCooldown = now;
                         handHistory = [];
                     }
@@ -271,35 +274,29 @@
                 handX = results.multiHandLandmarks[0][8].x * canvas.width;
                 handY = results.multiHandLandmarks[0][8].y * canvas.height;
 
-                // --- STRICT NAMASTE DETECTION ---
-                if (!presentationMode && results.multiHandLandmarks.length === 2) {
-                    // Ensure it is actually a left hand and a right hand interacting
-                    let label1 = results.multiHandedness[0].label;
-                    let label2 = results.multiHandedness[1].label;
-                    
-                    if (label1 !== label2) {
-                        let wristDist = Math.hypot(results.multiHandLandmarks[0][0].x - results.multiHandLandmarks[1][0].x, results.multiHandLandmarks[0][0].y - results.multiHandLandmarks[1][0].y);
-                        let indexDist = Math.hypot(results.multiHandLandmarks[0][8].x - results.multiHandLandmarks[1][8].x, results.multiHandLandmarks[0][8].y - results.multiHandLandmarks[1][8].y);
-                        
-                        // Both wrists and fingertips must be close
-                        if (wristDist < 0.15 && indexDist < 0.15) {
-                            namasteHoldTime++;
-                            // Must hold the pose for about 15-20 frames (~1 second) to trigger
-                            if (namasteHoldTime > 15) {
-                                presentationMode = true;
-                                presContainer.style.opacity = 1;
-                                gestureCooldown = now + 1000; // 1 second buffer before reading swipes
-                                handHistory = [];
-                                namasteHoldTime = 0;
-                            }
-                        } else {
-                            namasteHoldTime = 0; // Reset if broken
+                // --- NEW TRIGGER: PEACE SIGN ---
+                if (!presentationMode) {
+                    let peaceDetected = false;
+                    for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                        if (isPeaceSign(results.multiHandLandmarks[i])) {
+                            peaceDetected = true;
+                            break;
+                        }
+                    }
+
+                    if (peaceDetected) {
+                        triggerHoldTime++;
+                        // Must hold the Peace Sign for ~15 frames (half a second)
+                        if (triggerHoldTime > 15) {
+                            presentationMode = true;
+                            presContainer.style.opacity = 1;
+                            gestureCooldown = now + 1000; // Pause 1 sec before reading swipes
+                            handHistory = [];
+                            triggerHoldTime = 0;
                         }
                     } else {
-                        namasteHoldTime = 0;
+                        triggerHoldTime = 0; // Reset if the gesture breaks
                     }
-                } else {
-                    namasteHoldTime = 0;
                 }
 
                 if (presentationMode) {
@@ -322,7 +319,7 @@
             } else {
                 handX = -1000; handY = -1000;
                 handHistory = []; 
-                namasteHoldTime = 0;
+                triggerHoldTime = 0;
             }
 
             if (!presentationMode) {
