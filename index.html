@@ -77,11 +77,9 @@
             }
 
             update(handX, handY) {
-                // Spring back to their current target (dust, shape, or text)
                 this.vx += (this.targetX - this.x) * this.spring;
                 this.vy += (this.targetY - this.y) * this.spring;
 
-                // ONLY push particles away if they are just floating dust
                 if (currentShape === 'dust') {
                     let dx = this.x - handX;
                     let dy = this.y - handY;
@@ -90,13 +88,11 @@
                     let interactionRadius = 100;
                     if (distance < interactionRadius) {
                         let force = (interactionRadius - distance) / interactionRadius;
-                        // Push them away
                         this.vx += (dx / distance) * force * 15;
                         this.vy += (dy / distance) * force * 15;
                     }
                 }
 
-                // Apply friction and update position
                 this.vx *= this.friction;
                 this.vy *= this.friction;
                 this.x += this.vx;
@@ -148,8 +144,9 @@
                 offCtx.textAlign = 'center';
                 offCtx.textBaseline = 'middle';
                 offCtx.font = 'bold ' + (offCanvas.width * 0.12) + 'px sans-serif';
-                offCtx.fillText('Happy Birthday', cx, cy - 15);
-                offCtx.fillText('Laxmi', cx, cy + 15);
+                // Increased spacing here (from 15 to 28)
+                offCtx.fillText('Happy Birthday', cx, cy - 28);
+                offCtx.fillText('Laxmi', cx, cy + 28);
             } 
             else if (shape === 'flag') {
                 let fw = offCanvas.width * 0.7;
@@ -204,10 +201,16 @@
         }
 
         function isSalute(landmarks) {
+            // Must be an open hand
             if (isHandClosed(landmarks)) return false;
+            
+            // A much more forgiving check: Is the hand generally pointing sideways?
+            // We compare the horizontal distance to the vertical distance from wrist to middle finger.
             let dx = Math.abs(landmarks[12].x - landmarks[0].x);
             let dy = Math.abs(landmarks[12].y - landmarks[0].y);
-            return dx > dy * 0.8; 
+            
+            // If the horizontal span is greater than the vertical span, it's a salute
+            return dx > dy; 
         }
 
         let handX = -1000;
@@ -246,6 +249,7 @@
 
                     if (isRightHand) {
                         if (closed) rightClosed = true;
+                        // Checking for salute only on the right hand
                         if (!closed && isSalute(landmarks)) saluting = true;
                     } else {
                         if (closed) leftClosed = true;
